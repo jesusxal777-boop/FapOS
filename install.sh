@@ -2,27 +2,26 @@
 set -e
 
 echo "========================================"
-echo "  FapOS Installer"
+echo "  FapOS Installer — Liquid Glass"
 echo "========================================"
 
 if [ "$EUID" -ne 0 ]; then
-  echo "Please run as root (sudo bash install.sh)"
+  echo "Ejecuta como root: sudo bash install.sh"
   exit 1
 fi
 
-# Detect real user (the one who called sudo)
 REAL_USER=${SUDO_USER:-$USER}
 REAL_HOME=$(getent passwd "$REAL_USER" | cut -d: -f6)
 
-echo "[1/7] Updating package list..."
+echo "[1/7] Actualizando lista de paquetes..."
 apt-get update -qq
 
-echo "[2/7] Installing dependencies..."
+echo "[2/7] Instalando dependencias..."
 apt-get install -y \
   plank \
   xprintidle \
   libnotify-bin \
-  notify-osd \
+  notification-daemon \
   git \
   curl \
   wget \
@@ -32,33 +31,33 @@ apt-get install -y \
   imagemagick \
   plymouth \
   plymouth-themes \
+  sound-theme-freedesktop \
+  libcanberra-gtk3-module \
   || true
 
-echo "[3/7] Installing WhiteSur theme (macOS-like)..."
+echo "[3/7] Instalando WhiteSur (look macOS / Liquid Glass)..."
 if [ ! -d /tmp/WhiteSur-gtk-theme ]; then
   git clone --depth=1 https://github.com/vinceliuice/WhiteSur-gtk-theme.git /tmp/WhiteSur-gtk-theme
 fi
 cd /tmp/WhiteSur-gtk-theme
 ./install.sh -d /usr/share/themes -c Dark -t purple -l || true
 
-# Icons
 if [ ! -d /tmp/WhiteSur-icon-theme ]; then
   git clone --depth=1 https://github.com/vinceliuice/WhiteSur-icon-theme.git /tmp/WhiteSur-icon-theme
 fi
 cd /tmp/WhiteSur-icon-theme
 ./install.sh -d /usr/share/icons || true
 
-echo "[4/7] Setting up FapOS branding..."
+echo "[4/7] Branding FapOS..."
 mkdir -p /usr/share/backgrounds/fapos
 mkdir -p /etc/fapos
 
-# os-release
 cat > /etc/os-release << 'EOF'
-PRETTY_NAME="FapOS 1.0"
+PRETTY_NAME="FapOS 1.0 Liquid Glass"
 NAME="FapOS"
 VERSION_ID="1.0"
-VERSION="1.0 (Horny)"
-VERSION_CODENAME=horny
+VERSION="1.0 (Liquid Glass / Horny)"
+VERSION_CODENAME=liquidglass
 ID=fapos
 ID_LIKE=ubuntu debian
 HOME_URL="https://github.com/jesusxal777-boop/FapOS"
@@ -68,26 +67,37 @@ PRIVACY_POLICY_URL="https://github.com/jesusxal777-boop/FapOS"
 UBUNTU_CODENAME=noble
 EOF
 
-# hostname
-hostnamectl set-hostname fapos || echo "fapos" > /etc/hostname
+hostnamectl set-hostname fapos 2>/dev/null || echo "fapos" > /etc/hostname
 
-echo "[5/7] Installing idle monitor..."
-cp /home/"$REAL_USER"/FapOS/scripts/fapos-idle-monitor.sh /usr/local/bin/ 2>/dev/null || \
-cp scripts/fapos-idle-monitor.sh /usr/local/bin/
-chmod +x /usr/local/bin/fapos-idle-monitor.sh
+echo "[5/7] Instalando Idle Monitor v2 (más interactivo)..."
+SCRIPT_SRC=""
+if [ -f "$(dirname "$0")/scripts/fapos-idle-monitor.sh" ]; then
+  SCRIPT_SRC="$(dirname "$0")/scripts/fapos-idle-monitor.sh"
+elif [ -f /home/"$REAL_USER"/FapOS/scripts/fapos-idle-monitor.sh ]; then
+  SCRIPT_SRC=/home/"$REAL_USER"/FapOS/scripts/fapos-idle-monitor.sh
+elif [ -f scripts/fapos-idle-monitor.sh ]; then
+  SCRIPT_SRC=scripts/fapos-idle-monitor.sh
+fi
 
-# Systemd user service
+if [ -n "$SCRIPT_SRC" ]; then
+  cp "$SCRIPT_SRC" /usr/local/bin/fapos-idle-monitor.sh
+else
+  echo "No se encontró fapos-idle-monitor.sh — saltando copia"
+fi
+chmod +x /usr/local/bin/fapos-idle-monitor.sh 2>/dev/null || true
+
 mkdir -p "$REAL_HOME"/.config/systemd/user
 cat > "$REAL_HOME"/.config/systemd/user/fapos-idle.service << EOF
 [Unit]
-Description=FapOS Idle Monitor
+Description=FapOS Idle Monitor v2
 After=graphical-session.target
 
 [Service]
 ExecStart=/usr/local/bin/fapos-idle-monitor.sh
 Restart=always
-RestartSec=10
+RestartSec=8
 Environment=DISPLAY=:0
+Environment=XDG_RUNTIME_DIR=%t
 
 [Install]
 WantedBy=default.target
@@ -95,7 +105,7 @@ EOF
 
 chown -R "$REAL_USER":"$REAL_USER" "$REAL_HOME"/.config/systemd
 
-echo "[6/7] Configuring Plank dock and autostart..."
+echo "[6/7] Autostart Plank + Idle Monitor..."
 mkdir -p "$REAL_HOME"/.config/autostart
 cat > "$REAL_HOME"/.config/autostart/plank.desktop << EOF
 [Desktop Entry]
@@ -115,20 +125,20 @@ EOF
 
 chown -R "$REAL_USER":"$REAL_USER" "$REAL_HOME"/.config
 
-echo "[7/7] Enabling user service..."
-su - "$REAL_USER" -c "systemctl --user daemon-reload" || true
-su - "$REAL_USER" -c "systemctl --user enable fapos-idle.service" || true
+echo "[7/7] Activando servicio de usuario..."
+su - "$REAL_USER" -c "systemctl --user daemon-reload" 2>/dev/null || true
+su - "$REAL_USER" -c "systemctl --user enable --now fapos-idle.service" 2>/dev/null || true
 
 echo ""
 echo "========================================"
-echo "  FapOS installation complete!"
+echo "  FapOS Liquid Glass listo"
 echo "========================================"
 echo ""
-echo "Next steps:"
-echo "1. Log out and log back in (or reboot)"
-echo "2. Apply WhiteSur theme in Settings → Appearance"
-echo "3. Put your R34 wallpapers in /usr/share/backgrounds/fapos/"
-echo "4. Start Plank if it doesn't auto-start"
+echo "Siguiente:"
+echo "1. Cierra sesión y vuelve a entrar (o reinicia)"
+echo "2. Aplica WhiteSur en Ajustes → Apariencia"
+echo "3. Pon wallpapers R34 en /usr/share/backgrounds/fapos/"
+echo "4. El monitor ya está activo: a los 3 min de idle te va a buscar"
 echo ""
-echo "Idle monitor will start automatically."
-echo "Enjoy FapOS."
+echo "Usuario live (ISO): usuario  |  Contraseña: (ninguna)"
+echo "Disfruta. Que te tiente."

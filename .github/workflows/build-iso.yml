@@ -19,14 +19,15 @@ jobs:
 
       - name: Free up disk space
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost || true
           sudo apt-get clean
+          sudo docker system prune -af || true
           df -h
 
       - name: Install live-build and dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
             live-build \
             debootstrap \
             squashfs-tools \
@@ -39,14 +40,14 @@ jobs:
             dosfstools \
             rsync \
             git \
-            ca-certificates
+            ca-certificates \
+            dpkg-dev
 
       - name: Configure live-build
         run: |
           mkdir -p lb-build
           cd lb-build
 
-          # Basic configuration for Ubuntu-based live system
           lb config \
             --distribution noble \
             --archive-areas "main restricted universe multiverse" \
@@ -54,64 +55,120 @@ jobs:
             --parent-archive-areas "main restricted universe multiverse" \
             --architectures amd64 \
             --binary-images iso-hybrid \
-            --bootappend-live "boot=live components hostname=fapos username=usuario" \
+            --bootappend-live "boot=live components quiet splash hostname=fapos username=usuario" \
             --debian-installer false \
             --firmware-binary true \
             --firmware-chroot true \
             --iso-application "FapOS" \
             --iso-preparer "FapOS Builder" \
             --iso-publisher "https://github.com/jesusxal777-boop/FapOS" \
-            --iso-volume "FapOS 1.0" \
+            --iso-volume "FapOS 1.0 Liquid Glass" \
             --memtest none \
-            --win32-loader false
+            --win32-loader false \
+            --apt-indices false \
+            --cache false
 
-          # Add packages
+          # Paquetes: escritorio ligero + herramientas FapOS
           mkdir -p config/package-lists
-          cat > config/package-lists/fapos.list.chroot << EOF
+          cat > config/package-lists/fapos.list.chroot << 'EOF'
+          # Escritorio ligero (XFCE) — más viable en runners
+          xfce4
+          xfce4-goodies
+          xfce4-terminal
+          lightdm
+          lightdm-gtk-greeter
+          # Dock y look macOS-like
           plank
+          # Idle + notificaciones
           xprintidle
           libnotify-bin
-          notify-osd
+          notification-daemon
+          # Básicos
           network-manager
+          network-manager-gnome
           firefox
-          gedit
-          nautilus
-          gnome-terminal
+          mousepad
+          thunar
           sudo
           curl
           wget
           git
           ca-certificates
+          # Sonidos
+          sound-theme-freedesktop
+          libcanberra-gtk3-module
           EOF
 
-          # Include our scripts and branding
+          # Includes de FapOS
           mkdir -p config/includes.chroot/usr/local/bin
           mkdir -p config/includes.chroot/etc
           mkdir -p config/includes.chroot/usr/share/backgrounds/fapos
           mkdir -p config/includes.chroot/etc/skel/.config/autostart
+          mkdir -p config/includes.chroot/etc/skel/.config/plank/dock1
 
           cp ../scripts/fapos-idle-monitor.sh config/includes.chroot/usr/local/bin/
           chmod +x config/includes.chroot/usr/local/bin/fapos-idle-monitor.sh
 
-          cp ../branding/os-release config/includes.chroot/etc/
-          cp ../branding/lsb-release config/includes.chroot/etc/
+          cp ../branding/os-release config/includes.chroot/etc/os-release
+          cp ../branding/lsb-release config/includes.chroot/etc/lsb-release
 
-          cp ../configs/autostart/* config/includes.chroot/etc/skel/.config/autostart/
+          cp ../configs/autostart/* config/includes.chroot/etc/skel/.config/autostart/ 2>/dev/null || true
 
-          # Simple hook to set hostname and enable services later
+          # Hook de personalización
           mkdir -p config/hooks/live
           cat > config/hooks/live/0010-fapos.hook.chroot << 'HOOK'
           #!/bin/bash
+          set -e
           echo "fapos" > /etc/hostname
           chmod +x /usr/local/bin/fapos-idle-monitor.sh
+
+          # Usuario live sin contraseña (fácil de usar en emuladores)
+          # En live-build el usuario se crea con el bootappend username=
+          # Aseguramos que pueda usar sudo sin password
+          if id usuario &>/dev/null; then
+            echo "usuario ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/usuario
+            chmod 440 /etc/sudoers.d/usuario
+          fi
+
+          # Mensaje de bienvenida
+          mkdir -p /etc/skel/Desktop
+          cat > /etc/skel/Desktop/Bienvenido-a-FapOS.desktop << 'DESK'
+          [Desktop Entry]
+          Type=Application
+          Name=Bienvenido a FapOS
+          Comment=Lee esto primero
+          Exec=xfce4-terminal -e "bash -c 'echo -e \"\\n  🔥 Bienvenido a FapOS 1.0 — Liquid Glass Edition\\n\\n  Usuario: usuario\\n  Contraseña: (ninguna, solo Enter)\\n\\n  El monitor de inactividad ya está activo.\\n  Cuando dejes de tocar el teclado/mouse... te va a buscar.\\n\\n  Coloca wallpapers R34 en:\\n  /usr/share/backgrounds/fapos/\\n\\n  Disfruta.\\n\"; read -p \"Presiona Enter para cerrar...\"'"
+          Icon=preferences-desktop-wallpaper
+          Terminal=false
+          DESK
+          chmod +x /etc/skel/Desktop/Bienvenido-a-FapOS.desktop
+
+          # Autostart del idle monitor para el skel
+          mkdir -p /etc/skel/.config/autostart
+          cat > /etc/skel/.config/autostart/fapos-idle.desktop << 'AUTO'
+          [Desktop Entry]
+          Type=Application
+          Name=FapOS Idle Monitor
+          Exec=/usr/local/bin/fapos-idle-monitor.sh
+          X-GNOME-Autostart-enabled=true
+          Hidden=false
+          AUTO
+
+          cat > /etc/skel/.config/autostart/plank.desktop << 'AUTO'
+          [Desktop Entry]
+          Type=Application
+          Name=Plank
+          Exec=plank
+          X-GNOME-Autostart-enabled=true
+          AUTO
           HOOK
           chmod +x config/hooks/live/0010-fapos.hook.chroot
 
-      - name: Build the ISO (this can take a long time)
+      - name: Build the ISO
         run: |
           cd lb-build
           sudo lb build 2>&1 | tee build.log
-        continue-on-error: true
+          # No continue-on-error: si falla, el job falla
 
       - name: Check for ISO
         id: check_iso
@@ -120,10 +177,16 @@ jobs:
           if ls *.iso 1> /dev/null 2>&1; then
             echo "iso_found=true" >> $GITHUB_OUTPUT
             ls -lh *.iso
+            # Renombrar para claridad
+            for f in *.iso; do
+              mv "$f" "FapOS-1.0-LiquidGlass-amd64.iso" || true
+            done
+            ls -lh *.iso
           else
             echo "iso_found=false" >> $GITHUB_OUTPUT
-            echo "No ISO produced. Check build.log"
-            tail -100 build.log || true
+            echo "=== No ISO produced. Last 150 lines of build.log ==="
+            tail -150 build.log || true
+            exit 1
           fi
 
       - name: Upload ISO artifact
@@ -133,6 +196,7 @@ jobs:
           name: FapOS-Live-ISO
           path: lb-build/*.iso
           retention-days: 14
+          compression-level: 0
 
       - name: Upload build log
         if: always()
