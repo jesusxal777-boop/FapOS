@@ -1,0 +1,17 @@
+# Build artifacts
+lb-build/
+*.iso
+*.img
+*.log
+
+# Temporary
+/tmp/
+*.tmp
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
