@@ -1,8 +1,8 @@
-PRETTY_NAME="FapOS 1.0"
+PRETTY_NAME="FapOS 1.0 Liquid Glass"
 NAME="FapOS"
 VERSION_ID="1.0"
-VERSION="1.0 (Horny)"
-VERSION_CODENAME=horny
+VERSION="1.0 (Liquid Glass / Horny)"
+VERSION_CODENAME=liquidglass
 ID=fapos
 ID_LIKE=ubuntu debian
 HOME_URL="https://github.com/jesusxal777-boop/FapOS"
