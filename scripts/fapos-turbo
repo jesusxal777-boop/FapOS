@@ -1,0 +1,39 @@
+#!/bin/bash
+# Activa / desactiva modo turbo del idle monitor (12s en vez de 3 min)
+# Uso: fapos-turbo        → enciende turbo
+#      fapos-turbo off    → apaga turbo
+#      fapos-turbo toggle → alterna
+
+FLAG=/tmp/fapos-turbo
+MODE=${XDG_RUNTIME_DIR:-/tmp}/fapos-mode
+
+case "${1:-on}" in
+  on|start|1)
+    touch "$FLAG"
+    echo turbo > "$MODE" 2>/dev/null || true
+    # Avisa al proceso si está corriendo
+    pkill -USR1 -f fapos-idle-monitor.sh 2>/dev/null || true
+    notify-send -u critical -t 4000 "FapOS" "🔥 TURBO ON — idle a 12 segundos" 2>/dev/null || true
+    echo "Turbo ON (12s)"
+    ;;
+  off|stop|0)
+    rm -f "$FLAG" "$MODE"
+    pkill -USR2 -f fapos-idle-monitor.sh 2>/dev/null || true
+    notify-send -t 3000 "FapOS" "Turbo OFF — idle a 3 min" 2>/dev/null || true
+    echo "Turbo OFF"
+    ;;
+  toggle)
+    if [ -f "$FLAG" ]; then
+      exec "$0" off
+    else
+      exec "$0" on
+    fi
+    ;;
+  status)
+    if [ -f "$FLAG" ]; then echo "turbo"; else echo "normal"; fi
+    ;;
+  *)
+    echo "Uso: fapos-turbo [on|off|toggle|status]"
+    exit 1
+    ;;
+esac

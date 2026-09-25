@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=FapOS Turbo Toggle
+Comment=Activa idle a 12 segundos (atajo Ctrl+Alt+F)
+Exec=/usr/local/bin/fapos-turbo toggle
+Terminal=false
+Icon=preferences-desktop-screensaver
+Categories=Utility;

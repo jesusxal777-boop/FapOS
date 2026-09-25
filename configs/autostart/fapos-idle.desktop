@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
 Name=FapOS Idle Monitor
-Comment=Detects inactivity and sends notifications
+Comment=Te busca cuando dejas de tocar la PC
 Exec=/usr/local/bin/fapos-idle-monitor.sh
-Terminal=false
 X-GNOME-Autostart-enabled=true
+Hidden=false
