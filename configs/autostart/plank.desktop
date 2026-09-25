@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Plank
+Comment=FapOS Dock
+Exec=plank
+Terminal=false
+X-GNOME-Autostart-enabled=true
