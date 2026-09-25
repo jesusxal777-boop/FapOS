@@ -1,0 +1,217 @@
+name: Build FapOS Live ISO
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Optional release tag'
+        required: false
+        default: 'nightly'
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Free up disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost || true
+          sudo apt-get clean
+          sudo docker system prune -af || true
+          df -h
+
+      - name: Install live-build and dependencies
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            live-build \
+            debootstrap \
+            squashfs-tools \
+            xorriso \
+            isolinux \
+            syslinux-utils \
+            grub-pc-bin \
+            grub-efi-amd64-bin \
+            mtools \
+            dosfstools \
+            rsync \
+            git \
+            ca-certificates \
+            dpkg-dev
+
+      - name: Configure live-build
+        run: |
+          set -e
+          mkdir -p lb-build
+          cd lb-build
+
+          # firmware OFF: evita el bug de package lists corruptas
+          # (Unable to locate package COMPUTER / Corp.-VALLEYVIEW / etc.)
+          lb config \
+            --distribution noble \
+            --archive-areas "main restricted universe multiverse" \
+            --parent-distribution noble \
+            --parent-archive-areas "main restricted universe multiverse" \
+            --architectures amd64 \
+            --binary-images iso-hybrid \
+            --bootappend-live "boot=live components quiet splash hostname=fapos username=usuario" \
+            --debian-installer false \
+            --firmware-binary false \
+            --firmware-chroot false \
+            --iso-application "FapOS" \
+            --iso-preparer "FapOS Builder" \
+            --iso-publisher "https://github.com/jesusxal777-boop/FapOS" \
+            --iso-volume "FapOS 1.0 Liquid Glass" \
+            --memtest none \
+            --win32-loader false \
+            --apt-indices false \
+            --cache false
+
+          # Solo nombres de paquetes, sin comentarios (live-build es quisquilloso)
+          mkdir -p config/package-lists
+          cat > config/package-lists/fapos.list.chroot << 'EOF'
+xfce4
+xfce4-goodies
+xfce4-terminal
+lightdm
+lightdm-gtk-greeter
+plank
+xprintidle
+libnotify-bin
+notification-daemon
+network-manager
+network-manager-gnome
+firefox
+mousepad
+thunar
+sudo
+curl
+wget
+git
+ca-certificates
+sound-theme-freedesktop
+libcanberra-gtk3-module
+EOF
+
+          mkdir -p config/includes.chroot/usr/local/bin
+          mkdir -p config/includes.chroot/etc
+          mkdir -p config/includes.chroot/usr/share/backgrounds/fapos
+          mkdir -p config/includes.chroot/etc/skel/.config/autostart
+          mkdir -p config/includes.chroot/usr/share/applications
+
+          cp ../scripts/fapos-idle-monitor.sh config/includes.chroot/usr/local/bin/
+          cp ../scripts/fapos-turbo config/includes.chroot/usr/local/bin/
+          chmod +x config/includes.chroot/usr/local/bin/fapos-idle-monitor.sh
+          chmod +x config/includes.chroot/usr/local/bin/fapos-turbo
+
+          cp ../branding/os-release config/includes.chroot/etc/os-release
+          cp ../branding/lsb-release config/includes.chroot/etc/lsb-release
+
+          cp ../configs/autostart/* config/includes.chroot/etc/skel/.config/autostart/ 2>/dev/null || true
+          cp ../configs/keybindings/fapos-turbo.desktop config/includes.chroot/usr/share/applications/ 2>/dev/null || true
+
+          mkdir -p config/hooks/live
+          cat > config/hooks/live/0010-fapos.hook.chroot << 'HOOK'
+#!/bin/bash
+set -e
+echo "fapos" > /etc/hostname
+chmod +x /usr/local/bin/fapos-idle-monitor.sh
+chmod +x /usr/local/bin/fapos-turbo
+
+if id usuario &>/dev/null; then
+  echo "usuario ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/usuario
+  chmod 440 /etc/sudoers.d/usuario
+fi
+
+mkdir -p /etc/skel/Desktop
+cat > /etc/skel/Desktop/Bienvenido-a-FapOS.desktop << 'DESK'
+[Desktop Entry]
+Type=Application
+Name=Bienvenido a FapOS
+Exec=xfce4-terminal -e "bash -c 'echo -e \"\\n  FapOS 1.0 Liquid Glass\\n\\n  Usuario: usuario\\n  Pass: (vacia / Enter)\\n\\n  Turbo idle: Ctrl+Alt+F  o  fapos-turbo\\n  Wallpapers R34: /usr/share/backgrounds/fapos/\\n\"; read -p \"Enter...\"'"
+Icon=preferences-desktop-wallpaper
+Terminal=false
+DESK
+chmod +x /etc/skel/Desktop/Bienvenido-a-FapOS.desktop
+
+mkdir -p /etc/skel/.config/autostart
+cat > /etc/skel/.config/autostart/fapos-idle.desktop << 'AUTO'
+[Desktop Entry]
+Type=Application
+Name=FapOS Idle Monitor
+Exec=/usr/local/bin/fapos-idle-monitor.sh
+X-GNOME-Autostart-enabled=true
+AUTO
+
+cat > /etc/skel/.config/autostart/plank.desktop << 'AUTO'
+[Desktop Entry]
+Type=Application
+Name=Plank
+Exec=plank
+X-GNOME-Autostart-enabled=true
+AUTO
+
+# Atajo de teclado XFCE: Ctrl+Alt+F = turbo toggle
+mkdir -p /etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml
+cat > /etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-keyboard-shortcuts.xml << 'KEYS'
+<?xml version="1.0" encoding="UTF-8"?>
+<channel name="xfce4-keyboard-shortcuts" version="1.0">
+  <property name="commands" type="empty">
+    <property name="custom" type="empty">
+      <property name="&lt;Primary&gt;&lt;Alt&gt;f" type="string" value="/usr/local/bin/fapos-turbo toggle"/>
+      <property name="override" type="bool" value="true"/>
+    </property>
+  </property>
+</channel>
+KEYS
+HOOK
+          chmod +x config/hooks/live/0010-fapos.hook.chroot
+
+      - name: Build the ISO
+        run: |
+          set -euo pipefail
+          cd lb-build
+          sudo lb build 2>&1 | tee build.log
+          # pipefail: si lb build falla, el step falla de verdad
+
+      - name: Check for ISO
+        id: check_iso
+        run: |
+          set -e
+          cd lb-build
+          # live-build a veces deja el ISO en el cwd o en binary/
+          ISO=$(find . -maxdepth 2 -name '*.iso' -type f 2>/dev/null | head -1 || true)
+          if [ -n "$ISO" ]; then
+            echo "iso_found=true" >> $GITHUB_OUTPUT
+            ls -lh "$ISO"
+            cp "$ISO" FapOS-1.0-LiquidGlass-amd64.iso
+            ls -lh FapOS-1.0-LiquidGlass-amd64.iso
+          else
+            echo "iso_found=false" >> $GITHUB_OUTPUT
+            echo "=== No ISO. Tail build.log ==="
+            tail -200 build.log || true
+            echo "=== Errores de paquetes ==="
+            grep -iE 'unable to locate|error|failed' build.log | tail -40 || true
+            exit 1
+          fi
+
+      - name: Upload ISO artifact
+        if: steps.check_iso.outputs.iso_found == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: FapOS-Live-ISO
+          path: lb-build/FapOS-1.0-LiquidGlass-amd64.iso
+          retention-days: 14
+          compression-level: 0
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: lb-build/build.log
+          retention-days: 7
