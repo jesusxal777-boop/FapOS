@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: 'Optional release tag'
+        description: "Optional release tag"
         required: false
-        default: 'nightly'
+        default: "nightly"
 
 jobs:
   build:
@@ -27,7 +27,9 @@ jobs:
       - name: Install live-build and dependencies
         run: |
           set -euxo pipefail
+
           sudo apt-get update
+
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             live-build \
             debootstrap \
@@ -48,6 +50,7 @@ jobs:
       - name: Configure live-build
         run: |
           set -euxo pipefail
+
           mkdir -p lb-build
           cd lb-build
 
@@ -70,6 +73,7 @@ jobs:
             --cache false
 
           mkdir -p config/package-lists
+
           cat > config/package-lists/fapos.list.chroot <<'EOF'
 xfce4
 xfce4-goodies
@@ -100,43 +104,63 @@ EOF
           mkdir -p config/includes.chroot/etc/skel/.config/autostart
           mkdir -p config/includes.chroot/usr/share/applications
 
-          cp ../scripts/fapos-idle-monitor.sh config/includes.chroot/usr/local/bin/
-          cp ../scripts/fapos-turbo config/includes.chroot/usr/local/bin/
-          chmod +x config/includes.chroot/usr/local/bin/fapos-idle-monitor.sh
-          chmod +x config/includes.chroot/usr/local/bin/fapos-turbo
+          cp ../scripts/fapos-idle-monitor.sh \
+            config/includes.chroot/usr/local/bin/
 
-          cp ../branding/os-release config/includes.chroot/etc/os-release
-          cp ../branding/lsb-release config/includes.chroot/etc/lsb-release
+          cp ../scripts/fapos-turbo \
+            config/includes.chroot/usr/local/bin/
 
-          cp ../configs/autostart/* config/includes.chroot/etc/skel/.config/autostart/ 2>/dev/null || true
-          cp ../configs/keybindings/fapos-turbo.desktop config/includes.chroot/usr/share/applications/ 2>/dev/null || true
+          chmod +x \
+            config/includes.chroot/usr/local/bin/fapos-idle-monitor.sh \
+            config/includes.chroot/usr/local/bin/fapos-turbo
+
+          cp ../branding/os-release \
+            config/includes.chroot/etc/os-release
+
+          cp ../branding/lsb-release \
+            config/includes.chroot/etc/lsb-release
+
+          cp ../configs/autostart/* \
+            config/includes.chroot/etc/skel/.config/autostart/ \
+            2>/dev/null || true
+
+          cp ../configs/keybindings/fapos-turbo.desktop \
+            config/includes.chroot/usr/share/applications/ \
+            2>/dev/null || true
 
           mkdir -p config/hooks/live
+
           cat > config/hooks/live/0010-fapos.hook.chroot <<'HOOK'
 #!/bin/bash
 set -eux
 
 echo "fapos" > /etc/hostname
+
 chmod +x /usr/local/bin/fapos-idle-monitor.sh
 chmod +x /usr/local/bin/fapos-turbo
 
-if id usuario &>/dev/null; then
-  echo "usuario ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/usuario
-  chmod 440 /etc/sudoers.d/usuario
+if id usuario >/dev/null 2>&1; then
+    echo "usuario ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/usuario
+    chmod 440 /etc/sudoers.d/usuario
 fi
 
 mkdir -p /etc/skel/Desktop
+
 cat > /etc/skel/Desktop/Bienvenido-a-FapOS.desktop <<'DESK'
 [Desktop Entry]
 Type=Application
 Name=Bienvenido a FapOS
-Exec=xfce4-terminal -e "bash -c 'echo -e \"\\n  FapOS 1.0 Liquid Glass\\n\\n  Usuario: usuario\\n  Pass: (vacia / Enter)\\n\\n  Turbo idle: Ctrl+Alt+F  o  fapos-turbo\\n  Wallpapers R34: /usr/share/backgrounds/fapos/\\n\\n  Distro: Ubuntu 24.04 / XFCE\\n\\n  Proyecto: FapOS\\n\"; exec bash'"
+Exec=xfce4-terminal --command="bash -c 'printf \"\\nFapOS 1.0 Liquid Glass\\n\\nUsuario: usuario\\nPass: (vacia / Enter)\\n\\nTurbo idle: Ctrl+Alt+F o fapos-turbo\\nWallpapers: /usr/share/backgrounds/fapos/\\n\\nDistro: Ubuntu 24.04 / XFCE\\n\\nProyecto: FapOS\\n\\n\"; exec bash'"
 Icon=preferences-desktop-wallpaper
 Terminal=false
+Type=Application
+Categories=Utility;
 DESK
+
 chmod +x /etc/skel/Desktop/Bienvenido-a-FapOS.desktop
 
 mkdir -p /etc/skel/.config/autostart
+
 cat > /etc/skel/.config/autostart/fapos-idle.desktop <<'AUTO'
 [Desktop Entry]
 Type=Application
@@ -154,18 +178,21 @@ X-GNOME-Autostart-enabled=true
 AUTO
 
 mkdir -p /etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml
+
 cat > /etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-keyboard-shortcuts.xml <<'KEYS'
 <?xml version="1.0" encoding="UTF-8"?>
 <channel name="xfce4-keyboard-shortcuts" version="1.0">
   <property name="commands" type="empty">
     <property name="custom" type="empty">
-      <property name="&lt;Primary&gt;&lt;Alt&gt;f" type="string" value="/usr/local/bin/fapos-turbo toggle"/>
-      <property name="override" type="bool" value="true"/>
+      <property name="&lt;Primary&gt;&lt;Alt&gt;f"
+                type="string"
+                value="/usr/local/bin/fapos-turbo toggle"/>
     </property>
   </property>
 </channel>
 KEYS
 HOOK
+
           chmod +x config/hooks/live/0010-fapos.hook.chroot
 
       - name: Build the ISO
@@ -178,19 +205,30 @@ HOOK
         id: check_iso
         run: |
           set -euxo pipefail
+
           cd lb-build
+
           ISO=$(find . -maxdepth 3 -name '*.iso' -type f 2>/dev/null | head -1 || true)
+
           if [ -n "$ISO" ]; then
             echo "iso_found=true" >> "$GITHUB_OUTPUT"
+
             ls -lh "$ISO"
+
             cp "$ISO" FapOS-1.0-LiquidGlass-amd64.iso
+
             ls -lh FapOS-1.0-LiquidGlass-amd64.iso
           else
             echo "iso_found=false" >> "$GITHUB_OUTPUT"
+
             echo "=== No ISO. Tail build.log ==="
             tail -200 build.log || true
+
             echo "=== Errores de paquetes ==="
-            grep -iE 'unable to locate|error|failed|no installation candidate' build.log | tail -40 || true
+            grep -iE \
+              'unable to locate|error|failed|no installation candidate' \
+              build.log | tail -40 || true
+
             exit 1
           fi
 
